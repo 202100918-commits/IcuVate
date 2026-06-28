@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title id="page-title">IncuVate — متابعة صحة طفلك</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #020d1f;
+  --surface: #081830;
+  --border: rgba(100,160,255,.15);
+  --blue: #1e90ff;
+  --blue-dim: rgba(30,144,255,.15);
+  --green: #22c55e;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --purple: #a855f7;
+  --pink: #ec4899;
+  --text: #e2eaff;
+  --text-dim: #4a6fa5;
+  --text-mid: #7eaaff;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  font-family: 'Cairo', sans-serif;
+  color: var(--text);
+  overflow-x: hidden;
+  font-size: 15px;
+}
+
+/* ── HEADER ── */
+.top-bar {
+  background: linear-gradient(135deg, #0a1e42, #061530);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+}
+
+.logo-icon {
+  width: 42px; height: 42px; border-radius: 12px;
+  background: linear-gradient(135deg, #1e90ff, #0047cc);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 16px rgba(30,144,255,.4);
+  flex-shrink: 0;
+  animation: float 3s ease-in-out infinite;
+}
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+
+.logo-text { flex: 1; }
+.logo-text h1 { font-size: 17px; font-weight: 900; background: linear-gradient(90deg,#fff,#7eaaff); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.logo-text p { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+
+.conn-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
+  transition: all .4s;
+}
+.conn-dot.live { background: var(--green); box-shadow: 0 0 10px var(--green); animation: pulse-dot 2s infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+.lang-select {
+  flex-shrink: 0;
+  background: var(--blue-dim);
+  border: 1px solid var(--border);
+  color: var(--text-mid);
+  font-family: 'Cairo', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 30px;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: background .2s, border-color .2s;
+  white-space: nowrap;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+.lang-select:active, .lang-select:focus { background: rgba(30,144,255,.28); }
+.lang-select option { background: #081830; color: #e2eaff; }
+
+/* ── HERO BANNER ── */
+.hero {
+  background: linear-gradient(135deg, #0a1e42 0%, #061228 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 28px 20px 24px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(30,144,255,.15) 0%, transparent 70%);
+}
+.hero-icon {
+  width: 70px; height: 70px; border-radius: 22px;
+  background: linear-gradient(135deg, rgba(30,144,255,.2), rgba(30,144,255,.05));
+  border: 1px solid rgba(30,144,255,.3);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 16px;
+  font-size: 34px;
+}
+.hero h2 {
+  font-size: 22px; font-weight: 900; line-height: 1.3;
+  background: linear-gradient(135deg, #ffffff, #7eaaff);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  margin-bottom: 8px;
+}
+.hero p {
+  font-size: 13px; color: var(--text-dim); line-height: 1.7; max-width: 320px; margin: 0 auto;
+}
+
+/* ── STATUS CARD ── */
+.status-card {
+  margin: 20px 16px;
+  background: linear-gradient(145deg, #0d2a5e, #081b3e);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+}
+
+.status-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(34,197,94,.1); border: 1px solid rgba(34,197,94,.25);
+  border-radius: 30px; padding: 6px 14px; margin-bottom: 16px;
+  font-size: 12px; font-weight: 700; color: var(--green);
+}
+
+.vitals-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.vital-box {
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 12px;
+  text-align: center;
+  transition: border-color .3s;
+}
+.vital-box.alert-high { border-color: rgba(239,68,68,.4); background: rgba(239,68,68,.05); }
+.vital-box.alert-ok   { border-color: rgba(34,197,94,.3); background: rgba(34,197,94,.04); }
+
+.vital-emoji { font-size: 22px; margin-bottom: 4px; }
+.vital-label { font-size: 11px; color: var(--text-dim); font-weight: 600; margin-bottom: 2px; }
+.vital-value {
+  font-size: 24px; font-weight: 900; font-family: monospace;
+  background: linear-gradient(135deg, #fff, #7eaaff);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  line-height: 1;
+}
+.vital-value.dim { background: none; -webkit-text-fill-color: #2a4a7e; }
+.vital-unit { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+.status-footer {
+  margin-top: 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+/* ── ENV MINI ── */
+.env-mini {
+  margin: 0 16px 20px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.env-card {
+  background: linear-gradient(145deg, #0d2a5e, #081b3e);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+}
+.env-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.env-card-label { font-size: 12px; color: var(--text-dim); font-weight: 600; }
+.env-card-val { font-size: 26px; font-weight: 900; font-family: monospace; }
+.env-bar-track { height: 8px; background: rgba(255,255,255,.06); border-radius: 6px; overflow: hidden; }
+.env-bar-fill { height: 100%; border-radius: 6px; transition: width .8s; }
+
+/* ── CRY STATUS ── */
+.cry-card {
+  margin: 0 16px 20px;
+  background: linear-gradient(145deg, rgba(168,85,247,.1), rgba(168,85,247,.03));
+  border: 1px solid rgba(168,85,247,.25);
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex; align-items: center; gap: 14px;
+}
+.cry-card.crying {
+  background: linear-gradient(145deg, rgba(236,72,153,.15), rgba(236,72,153,.05));
+  border-color: rgba(236,72,153,.5);
+  animation: shake .4s ease;
+}
+@keyframes shake {
+  0%,100%{transform:translateX(0)} 25%{transform:translateX(-3px)} 75%{transform:translateX(3px)}
+}
+.cry-emoji { font-size: 32px; }
+.cry-text h3 { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+.cry-text p { font-size: 12px; color: var(--text-dim); }
+.cry-status { font-size: 13px; font-weight: 700; }
+
+/* ── SECTION HEADER ── */
+.section-hdr {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 16px 12px;
+  font-size: 14px; font-weight: 700; color: var(--text-mid);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.section-hdr::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--border), transparent);
+}
+
+/* ── EXPLAINER / VIDEO ── */
+.explainer-section { margin: 0 16px 24px; }
+
+/* Animated explainer */
+.explainer-card {
+  background: linear-gradient(145deg, #0d2a5e, #081b3e);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.explainer-hero {
+  background: linear-gradient(135deg, #0a1e42, #051228);
+  border-bottom: 1px solid var(--border);
+  padding: 24px 20px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.system-diagram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin: 0 auto 20px;
+  max-width: 340px;
+  position: relative;
+}
+
+.diagram-node {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  z-index: 1;
+}
+.diagram-node-icon {
+  width: 52px; height: 52px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.4);
+  animation: node-pulse 3s ease-in-out infinite;
+}
+.diagram-node-icon:nth-child(1) { animation-delay: 0s; }
+.diagram-node-label { font-size: 10px; color: var(--text-dim); font-weight: 600; text-align: center; line-height: 1.3; }
+
+@keyframes node-pulse {
+  0%,100%{box-shadow:0 4px 20px rgba(0,0,0,.4), 0 0 0 rgba(30,144,255,0)}
+  50%{box-shadow:0 4px 20px rgba(0,0,0,.4), 0 0 12px rgba(30,144,255,.3)}
+}
+
+.diagram-arrow {
+  flex: 1;
+  display: flex; align-items: center;
+  padding: 0 4px;
+  margin-bottom: 22px;
+}
+.diagram-arrow svg { width: 100%; max-width: 40px; }
+
+.explainer-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.explainer-sub { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+
+/* Steps */
+.explainer-steps { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.step {
+  display: flex; gap: 14px; align-items: flex-start;
+  opacity: 0; transform: translateY(16px);
+  transition: opacity .5s ease, transform .5s ease;
+}
+.step.visible { opacity: 1; transform: translateY(0); }
+.step-num {
+  width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 900; font-family: monospace;
+}
+.step-body h4 { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+.step-body p { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+
+/* Video embed placeholder */
+.video-wrap {
+  margin-top: 16px;
+  border-radius: 0 0 18px 18px;
+  overflow: hidden;
+  position: relative;
+}
+.video-placeholder {
+  background: #030d1e;
+  border-top: 1px solid var(--border);
+  padding: 28px 20px;
+  text-align: center;
+}
+.yt-embed { width: 100%; aspect-ratio: 16/9; border: none; border-radius: 0; }
+
+/* ── RISK SECTION ── */
+.risk-section { margin: 0 16px 20px; }
+.risk-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+.risk-box {
+  border-radius: 14px; padding: 14px 10px; text-align: center;
+}
+.risk-box-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+.risk-box-val { font-size: 22px; font-weight: 900; font-family: monospace; }
+.risk-box-unit { font-size: 10px; }
+.risk-desc { margin-top: 10px; font-size: 11px; color: var(--text-dim); line-height: 1.5; text-align: center; background: rgba(255,255,255,.02); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+
+/* ── ALERTS ── */
+.alerts-section { margin: 0 16px 20px; }
+.alerts-list { display: flex; flex-direction: column; gap: 8px; }
+.alert-item {
+  border-radius: 12px; padding: 12px 14px;
+  display: flex; gap: 10px; align-items: flex-start;
+  animation: slideIn .3s ease;
+}
+@keyframes slideIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+.alert-item-msg { font-size: 12px; font-weight: 600; line-height: 1.4; }
+.alert-item-time { font-size: 10px; margin-top: 2px; opacity: .7; }
+.alerts-empty { text-align: center; padding: 24px 0; color: var(--text-dim); font-size: 13px; }
+
+/* ── CONFIG BROKER ── */
+.cfg-section {
+  margin: 0 16px 32px;
+  background: linear-gradient(145deg, #0d2a5e, #081b3e);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px;
+}
+.cfg-label { font-size: 12px; font-weight: 700; color: var(--text-mid); margin-bottom: 6px; display: block; }
+.cfg-input {
+  width: 100%; background: #071433;
+  border: 1px solid rgba(100,160,255,.2);
+  border-radius: 10px; padding: 10px 14px;
+  color: var(--text); font-size: 13px; font-family: monospace;
+  outline: none; margin-bottom: 12px;
+  transition: border-color .2s;
+  -webkit-appearance: none;
+}
+.cfg-input:focus { border-color: var(--blue); }
+.cfg-btn {
+  width: 100%; padding: 12px;
+  background: linear-gradient(135deg, #1e90ff, #0047cc);
+  border: none; border-radius: 12px;
+  color: #fff; font-size: 14px; font-weight: 700;
+  font-family: 'Cairo', sans-serif;
+  cursor: pointer; transition: opacity .2s;
+}
+.cfg-btn:active { opacity: .85; }
+.cfg-hint { font-size: 11px; color: var(--text-dim); margin-top: 10px; text-align: center; line-height: 1.5; }
+
+/* ── DEMO BANNER ── */
+.demo-bar {
+  margin: 0 16px 16px;
+  background: rgba(245,158,11,.08);
+  border: 1px solid rgba(245,158,11,.25);
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: #d97706;
+}
+.demo-bar strong { color: #f59e0b; }
+
+/* ── FOOTER ── */
+.page-footer {
+  text-align: center; padding: 24px 20px 40px;
+  font-size: 11px; color: #1e3060;
+  border-top: 1px solid rgba(30,144,255,.06);
+}
+.page-footer span { color: #1e4080; }
+
+/* DEMO BADGE */
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+.blinking { animation: blink 2s infinite; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="top-bar">
+  <div class="logo-icon">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 12c0 1.657-1.343 3-3 3s-3-1.343-3-3 1.343-3 3-3 3 1.343 3 3z"/>
+      <path d="M9 12h6"/>
+      <path d="M15 12c0 1.657 1.343 3 3 3s3-1.343 3-3-1.343-3-3-3-3 1.343-3 3z"/>
+      <path d="M12 9V6"/><path d="M12 18v-3"/>
+      <circle cx="12" cy="6" r="2"/><circle cx="12" cy="18" r="2"/>
+    </svg>
+  </div>
+  <div class="logo-text">
+    <h1>IncuVate</h1>
+    <p data-i18n="brandTagline">متابعة صحة طفلك لحظة بلحظة</p>
+  </div>
+  <select id="lang-select" class="lang-select" onchange="setLanguage(this.value)" title="Change language / تغيير اللغة">
+    <option value="ar">🌐 العربية</option>
+    <option value="en">🌐 English</option>
+    <option value="fr">🌐 Français</option>
+    <option value="de">🌐 Deutsch</option>
+    <option value="sv">🌐 Svenska</option>
+    <option value="zh">🌐 中文</option>
+  </select>
+  <div id="conn-dot" class="conn-dot" data-i18n-title="connStatus" title="حالة الاتصال"></div>
+</div>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-icon">👶</div>
+  <h2 data-i18n-html="heroTitle">طفلك بأمان<br>في حضن الحاضنة الذكية</h2>
+  <p data-i18n="heroDesc">بتتابع كل اللحظات — ضربات القلب، درجة الحرارة، الأكسجين، والبكاء — وبتوصلك أي تغيير فوراً</p>
+</div>
+
+<!-- DEMO BAR -->
+<div class="demo-bar" id="demo-bar">
+  <span style="font-size:16px;">⚠️</span>
+  <span><strong class="blinking" data-i18n="demoBadge">وضع العرض</strong> <span data-i18n="demoRest"> — البيانات تجريبية. اتصل بـ MQTT Broker لرؤية البيانات الحقيقية</span></span>
+</div>
+
+<!-- VITALS -->
+<div class="section-hdr">
+  <span>🫀</span> <span data-i18n="sectionVitals">العلامات الحيوية</span>
+</div>
+
+<div class="status-card">
+  <div id="status-badge" class="status-badge">
+    <span style="font-size:14px;">✅</span>
+    <span id="status-text" data-i18n="statusOk">الطفل بخير</span>
+  </div>
+  <div class="vitals-grid">
+    <div class="vital-box" id="box-hr">
+      <div class="vital-emoji">❤️</div>
+      <div class="vital-label" data-i18n="labelHr">ضربات القلب</div>
+      <div class="vital-value dim" id="val-hr">—</div>
+      <div class="vital-unit">bpm</div>
+    </div>
+    <div class="vital-box" id="box-spo2">
+      <div class="vital-emoji">🫁</div>
+      <div class="vital-label" data-i18n="labelSpo2">نسبة الأكسجين</div>
+      <div class="vital-value dim" id="val-spo2">—</div>
+      <div class="vital-unit">SpO₂ %</div>
+    </div>
+    <div class="vital-box" id="box-resp">
+      <div class="vital-emoji">🌬️</div>
+      <div class="vital-label" data-i18n="labelResp">معدل التنفس</div>
+      <div class="vital-value dim" id="val-resp">—</div>
+      <div class="vital-unit" data-i18n="unitResp">نفس/دقيقة</div>
+    </div>
+    <div class="vital-box" id="box-temp">
+      <div class="vital-emoji">🌡️</div>
+      <div class="vital-label" data-i18n="labelTemp">حرارة الجلد</div>
+      <div class="vital-value dim" id="val-temp">—</div>
+      <div class="vital-unit">°C</div>
+    </div>
+    <div class="vital-box" id="box-weight">
+      <div class="vital-emoji">⚖️</div>
+      <div class="vital-label" data-i18n="labelWeight">الوزن</div>
+      <div class="vital-value dim" id="val-weight">—</div>
+      <div class="vital-unit" data-i18n="unitWeight">جرام</div>
+    </div>
+    <div class="vital-box" id="box-age">
+      <div class="vital-emoji">🗓️</div>
+      <div class="vital-label" data-i18n="labelAge">العمر</div>
+      <div class="vital-value dim" id="val-age">—</div>
+      <div class="vital-unit" data-i18n="unitAge">أيام</div>
+    </div>
+  </div>
+  <div class="status-footer">
+    <span data-i18n="lastUpdateLabel">آخر تحديث:</span>
+    <span id="last-update" style="color:var(--text-mid);">—</span>
+  </div>
+</div>
+
+<!-- ENV -->
+<div class="section-hdr">
+  <span>🏠</span> <span data-i18n="sectionEnv">بيئة الحاضنة</span>
+</div>
+
+<div class="env-mini">
+  <div class="env-card">
+    <div class="env-card-top">
+      <span style="font-size:20px;">🌡️</span>
+      <span class="env-card-label" data-i18n="envTempLabel">درجة حرارة الحاضنة</span>
+    </div>
+    <div class="env-card-val" id="env-temp" style="color:#f59e0b;">—°C</div>
+    <div style="margin-top:8px;">
+      <div class="env-bar-track"><div class="env-bar-fill" id="env-temp-bar" style="width:0%;background:linear-gradient(90deg,#f59e0b88,#f59e0b);"></div></div>
+    </div>
+  </div>
+  <div class="env-card">
+    <div class="env-card-top">
+      <span style="font-size:20px;">💧</span>
+      <span class="env-card-label" data-i18n="envHumLabel">الرطوبة</span>
+    </div>
+    <div class="env-card-val" id="env-hum" style="color:#29b6f6;">—%</div>
+    <div style="margin-top:8px;">
+      <div class="env-bar-track"><div class="env-bar-fill" id="env-hum-bar" style="width:0%;background:linear-gradient(90deg,#29b6f688,#29b6f6);"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- CRY -->
+<div class="cry-card" id="cry-card">
+  <div class="cry-emoji" id="cry-emoji">😴</div>
+  <div class="cry-text">
+    <h3 data-i18n="cryTitle">كشف البكاء (AI)</h3>
+    <div class="cry-status" id="cry-status" style="color:var(--text-dim);" data-i18n="cryWaiting">بانتظار البيانات…</div>
+    <p id="cry-class" style="margin-top:3px;"></p>
+  </div>
+</div>
+
+<!-- EXPLAINER -->
+<div class="section-hdr">
+  <span>🎬</span> <span data-i18n="sectionExplainer">كيف يشتغل IncuVate؟</span>
+</div>
+
+<div class="explainer-section">
+  <div class="explainer-card">
+
+    <!-- Animated System Diagram -->
+    <div class="explainer-hero">
+      <div class="system-diagram">
+        <div class="diagram-node">
+          <div class="diagram-node-icon" style="background:linear-gradient(135deg,#0d2a5e,#1e90ff22);border:1px solid rgba(30,144,255,.3);">🏥</div>
+          <div class="diagram-node-label" data-i18n-html="diagramSensors">أجهزة<br>الاستشعار</div>
+        </div>
+        <div class="diagram-arrow">
+          <svg viewBox="0 0 40 14" fill="none">
+            <defs>
+              <linearGradient id="ag1" x1="0" y1="0" x2="40" y2="0" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#1e90ff" stop-opacity=".3"/>
+                <stop offset="100%" stop-color="#1e90ff"/>
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="7" x2="33" y2="7" stroke="url(#ag1)" stroke-width="2"/>
+            <polygon points="33,3 40,7 33,11" fill="#1e90ff"/>
+          </svg>
+        </div>
+        <div class="diagram-node">
+          <div class="diagram-node-icon" style="background:linear-gradient(135deg,#0d2a5e,#a855f722);border:1px solid rgba(168,85,247,.3);">🧠</div>
+          <div class="diagram-node-label" data-i18n-html="diagramAI">ذكاء<br>اصطناعي</div>
+        </div>
+        <div class="diagram-arrow">
+          <svg viewBox="0 0 40 14" fill="none">
+            <defs>
+              <linearGradient id="ag2" x1="0" y1="0" x2="40" y2="0" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#a855f7" stop-opacity=".3"/>
+                <stop offset="100%" stop-color="#22c55e"/>
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="7" x2="33" y2="7" stroke="url(#ag2)" stroke-width="2"/>
+            <polygon points="33,3 40,7 33,11" fill="#22c55e"/>
+          </svg>
+        </div>
+        <div class="diagram-node">
+          <div class="diagram-node-icon" style="background:linear-gradient(135deg,#0d2a5e,#22c55e22);border:1px solid rgba(34,197,94,.3);">📱</div>
+          <div class="diagram-node-label" data-i18n-html="diagramYou">أنت<br>هنا</div>
+        </div>
+      </div>
+      <div class="explainer-title" data-i18n="explainerTitle">نظام متكامل يحمي طفلك 24/7</div>
+      <div class="explainer-sub" data-i18n="explainerSub">من الحاضنة لهاتفك في ثوانٍ — بدون انقطاع</div>
+    </div>
+
+    <!-- Steps -->
+    <div class="explainer-steps">
+      <div class="step" id="step1">
+        <div class="step-num" style="background:rgba(30,144,255,.15);color:#1e90ff;border:1px solid rgba(30,144,255,.3);">1</div>
+        <div class="step-body">
+          <h4 data-i18n="step1Title">أجهزة الاستشعار تراقب طفلك</h4>
+          <p data-i18n="step1Desc">حساسات متخصصة بتقيس ضربات القلب، نسبة الأكسجين، درجة الحرارة، معدل التنفس، والوزن — كل ثانية بثانية</p>
+        </div>
+      </div>
+      <div class="step" id="step2">
+        <div class="step-num" style="background:rgba(168,85,247,.15);color:#a855f7;border:1px solid rgba(168,85,247,.3);">2</div>
+        <div class="step-body">
+          <h4 data-i18n="step2Title">الذكاء الاصطناعي يحلل البيانات</h4>
+          <p data-i18n="step2Desc">Raspberry Pi 4 بيشغّل موديلات AI تكتشف بكاء الطفل، تصنف السبب (جوع / ألم / إزعاج)، وتحسب نسبة الخطر</p>
+        </div>
+      </div>
+      <div class="step" id="step3">
+        <div class="step-num" style="background:rgba(34,197,94,.15);color:#22c55e;border:1px solid rgba(34,197,94,.3);">3</div>
+        <div class="step-body">
+          <h4 data-i18n="step3Title">الحاضنة تتحكم تلقائياً</h4>
+          <p data-i18n="step3Desc">PID controller بيضبط الحرارة والرطوبة بدقة — زي أي حضانة مستشفى كبير — تلقائياً بدون تدخل</p>
+        </div>
+      </div>
+      <div class="step" id="step4">
+        <div class="step-num" style="background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.3);">4</div>
+        <div class="step-body">
+          <h4 data-i18n="step4Title">إشعار فوري على هاتفك</h4>
+          <p data-i18n="step4Desc">لو في أي تغيير — بكاء، انخفاض في الأكسجين، أو تحذير — بيوصلك إشعار على طول عبر الإنترنت</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Video Section -->
+    <div class="video-wrap">
+      <div class="video-placeholder" id="video-placeholder">
+        <div style="font-size:48px;margin-bottom:12px;">🎥</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px;" data-i18n="videoTitle">فيديو توضيحي للمشروع</div>
+        <div style="font-size:12px;color:var(--text-dim);line-height:1.6;margin-bottom:16px;" data-i18n="videoDesc">شاهد كيف يعمل IncuVate من الداخل — تصميم الدوائر، الكود، والاختبارات</div>
+        <div style="font-size:11px;color:#1e3a6e;background:rgba(30,144,255,.06);border:1px solid rgba(30,144,255,.15);border-radius:10px;padding:10px 14px;" data-i18n="videoNote">
+          📌 يمكن إضافة رابط YouTube هنا لاحقاً
+        </div>
+      </div>
+      <!-- Uncomment and add your YouTube video ID below when ready:
+      <iframe class="yt-embed" id="yt-frame"
+        src="https://www.youtube.com/embed/YOUR_VIDEO_ID?rel=0&modestbranding=1"
+        allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture">
+      </iframe>
+      -->
+    </div>
+
+  </div>
+</div>
+
+<!-- AI RISK -->
+<div class="section-hdr">
+  <span>🛡️</span> <span data-i18n="sectionRisk">تحليل المخاطر (AI)</span>
+</div>
+
+<div class="risk-section">
+  <div class="risk-grid">
+    <div class="risk-box" style="background:#ef444412;border:1px solid #ef444425;">
+      <div class="risk-box-label" style="color:#ef4444;" data-i18n="riskSepsis">تسمم الدم</div>
+      <div class="risk-box-val" id="risk-sepsis" style="color:#ef444488;">—</div>
+      <div class="risk-box-unit" style="color:#ef4444;">%</div>
+    </div>
+    <div class="risk-box" style="background:#3b82f612;border:1px solid #3b82f625;">
+      <div class="risk-box-label" style="color:#3b82f6;" data-i18n="riskHypoxia">نقص الأكسجين</div>
+      <div class="risk-box-val" id="risk-hypoxia" style="color:#3b82f688;">—</div>
+      <div class="risk-box-unit" style="color:#3b82f6;">%</div>
+    </div>
+    <div class="risk-box" style="background:#f59e0b12;border:1px solid #f59e0b25;">
+      <div class="risk-box-label" style="color:#f59e0b;" data-i18n="riskBrady">بطء القلب</div>
+      <div class="risk-box-val" id="risk-brady" style="color:#f59e0b88;">—</div>
+      <div class="risk-box-unit" style="color:#f59e0b;">%</div>
+    </div>
+  </div>
+  <div class="risk-desc" data-i18n="riskDesc">
+    🤖 الذكاء الاصطناعي بيحسب نسبة خطر كل مشكلة بناءً على البيانات الحيوية — وبيبعت تنبيه فوري لو النسبة اتجاوزت الحد الآمن
+  </div>
+</div>
+
+<!-- ALERTS -->
+<div class="section-hdr">
+  <span>🔔</span> <span data-i18n="sectionAlerts">آخر التنبيهات</span>
+</div>
+
+<div class="alerts-section">
+  <div class="alerts-list" id="alerts-list">
+    <div class="alerts-empty" data-i18n="alertsEmpty">لا يوجد تنبيهات حالياً ✅</div>
+  </div>
+</div>
+
+<!-- BROKER CONFIG -->
+<div class="section-hdr">
+  <span>⚙️</span> <span data-i18n="sectionConfig">إعداد الاتصال</span>
+</div>
+
+<div class="cfg-section">
+  <label class="cfg-label" data-i18n="cfgUrlLabel">رابط MQTT Broker (WebSocket)</label>
+  <input class="cfg-input" id="cfg-url" type="text" placeholder="wss://broker.hivemq.com:8884/mqtt" autocomplete="off" autocorrect="off" spellcheck="false"/>
+  <label class="cfg-label" data-i18n="cfgUserLabel">اسم المستخدم (اختياري)</label>
+  <input class="cfg-input" id="cfg-user" type="text" placeholder="username" autocomplete="off"/>
+  <label class="cfg-label" data-i18n="cfgPassLabel">كلمة المرور (اختياري)</label>
+  <input class="cfg-input" id="cfg-pass" type="password" placeholder="••••••••"/>
+  <button class="cfg-btn" id="cfg-btn" onclick="connectBroker()" data-i18n="cfgBtn">🔗 اتصل بالحاضنة</button>
+  <div class="cfg-hint" data-i18n="cfgHint">اسأل الطاقم الطبي أو الفريق التقني عن بيانات الاتصال الخاصة بك</div>
+</div>
+
+<!-- FOOTER -->
+<div class="page-footer">
+  <div style="font-size:20px;margin-bottom:8px;">🏥</div>
+  <div data-i18n-html="footerLine1">IncuVate — مشروع تخرج | <span>جامعة فاروس — الإسكندرية</span></div>
+  <div style="margin-top:4px;" data-i18n="footerLine2">حضانة أطفال ذكية بالذكاء الاصطناعي وإنترنت الأشياء</div>
+</div>
+
+<script>
+/* ─────────── MQTT TOPICS (same as main dashboard) ─────────── */
+const TOPICS = {
+  heartRate:  'incubator/baby/heart_rate',
+  spo2:       'incubator/baby/spo2',
+  respRate:   'incubator/baby/resp_rate',
+  skinTemp:   'incubator/baby/skin_temp',
+  weight:     'incubator/baby/weight',
+  age:        'incubator/baby/age',
+  incuTemp:   'incubator/env/temperature',
+  humidity:   'incubator/env/humidity',
+  sepsisRisk: 'incubator/ai/sepsis_risk',
+  hypoxia:    'incubator/ai/hypoxia_risk',
+  brady:      'incubator/ai/brady_risk',
+  babyCry:    'incubator/baby/cry',
+  cryClass:   'incubator/baby/cry_class',
+};
+
+const state = {
+  client: null,
+  connected: false,
+  demoMode: true,
+  demoInterval: null,
+  lang: 'ar',
+  vitals: {},
+  env: {},
+  risks: {},
+  cry: {},
+  alerts: [],
+};
+
+/* ─────────── I18N ─────────── */
+const I18N = {
+  ar: {
+    pageTitle: 'IncuVate — متابعة صحة طفلك',
+    brandTagline: 'متابعة صحة طفلك لحظة بلحظة',
+    connStatus: 'حالة الاتصال',
+    heroTitle: 'طفلك بأمان<br>في حضن الحاضنة الذكية',
+    heroDesc: 'بتتابع كل اللحظات — ضربات القلب، درجة الحرارة، الأكسجين، والبكاء — وبتوصلك أي تغيير فوراً',
+    demoBadge: 'وضع العرض',
+    demoRest: ' — البيانات تجريبية. اتصل بـ MQTT Broker لرؤية البيانات الحقيقية',
+    sectionVitals: 'العلامات الحيوية',
+    statusOk: 'الطفل بخير',
+    labelHr: 'ضربات القلب',
+    labelSpo2: 'نسبة الأكسجين',
+    labelResp: 'معدل التنفس',
+    labelTemp: 'حرارة الجلد',
+    labelWeight: 'الوزن',
+    labelAge: 'العمر',
+    unitResp: 'نفس/دقيقة',
+    unitWeight: 'جرام',
+    unitAge: 'أيام',
+    lastUpdateLabel: 'آخر تحديث:',
+    sectionEnv: 'بيئة الحاضنة',
+    envTempLabel: 'درجة حرارة الحاضنة',
+    envHumLabel: 'الرطوبة',
+    cryTitle: 'كشف البكاء (AI)',
+    cryWaiting: 'بانتظار البيانات…',
+    cryCrying: '🔴 الطفل بيعيط!',
+    cryCalm: '🟢 الطفل هادي',
+    cryReasonPrefix: 'السبب: ',
+    sectionExplainer: 'كيف يشتغل IncuVate؟',
+    diagramSensors: 'أجهزة<br>الاستشعار',
+    diagramAI: 'ذكاء<br>اصطناعي',
+    diagramYou: 'أنت<br>هنا',
+    explainerTitle: 'نظام متكامل يحمي طفلك 24/7',
+    explainerSub: 'من الحاضنة لهاتفك في ثوانٍ — بدون انقطاع',
+    step1Title: 'أجهزة الاستشعار تراقب طفلك',
+    step1Desc: 'حساسات متخصصة بتقيس ضربات القلب، نسبة الأكسجين، درجة الحرارة، معدل التنفس، والوزن — كل ثانية بثانية',
+    step2Title: 'الذكاء الاصطناعي يحلل البيانات',
+    step2Desc: 'Raspberry Pi 4 بيشغّل موديلات AI تكتشف بكاء الطفل، تصنف السبب (جوع / ألم / إزعاج)، وتحسب نسبة الخطر',
+    step3Title: 'الحاضنة تتحكم تلقائياً',
+    step3Desc: 'PID controller بيضبط الحرارة والرطوبة بدقة — زي أي حضانة مستشفى كبير — تلقائياً بدون تدخل',
+    step4Title: 'إشعار فوري على هاتفك',
+    step4Desc: 'لو في أي تغيير — بكاء، انخفاض في الأكسجين، أو تحذير — بيوصلك إشعار على طول عبر الإنترنت',
+    videoTitle: 'فيديو توضيحي للمشروع',
+    videoDesc: 'شاهد كيف يعمل IncuVate من الداخل — تصميم الدوائر، الكود، والاختبارات',
+    videoNote: '📌 يمكن إضافة رابط YouTube هنا لاحقاً',
+    sectionRisk: 'تحليل المخاطر (AI)',
+    riskSepsis: 'تسمم الدم',
+    riskHypoxia: 'نقص الأكسجين',
+    riskBrady: 'بطء القلب',
+    riskDesc: '🤖 الذكاء الاصطناعي بيحسب نسبة خطر كل مشكلة بناءً على البيانات الحيوية — وبيبعت تنبيه فوري لو النسبة اتجاوزت الحد الآمن',
+    sectionAlerts: 'آخر التنبيهات',
+    alertsEmpty: 'لا يوجد تنبيهات حالياً ✅',
+    sectionConfig: 'إعداد الاتصال',
+    cfgUrlLabel: 'رابط MQTT Broker (WebSocket)',
+    cfgUserLabel: 'اسم المستخدم (اختياري)',
+    cfgPassLabel: 'كلمة المرور (اختياري)',
+    cfgBtn: '🔗 اتصل بالحاضنة',
+    cfgHint: 'اسأل الطاقم الطبي أو الفريق التقني عن بيانات الاتصال الخاصة بك',
+    footerLine1: 'IncuVate — مشروع تخرج | <span>جامعة فاروس — الإسكندرية</span>',
+    footerLine2: 'حضانة أطفال ذكية بالذكاء الاصطناعي وإنترنت الأشياء',
+    statusAllGood: 'الطفل بخير — كل شيء طبيعي',
+    issueLowO2: 'انخفاض الأكسجين',
+    issueIrregularHr: 'قلب غير منتظم',
+    issueAbnormalTemp: 'حرارة غير طبيعية',
+    alertLowO2: (v) => `تحذير: نسبة الأكسجين منخفضة (${v}%)`,
+    alertHighSepsis: (v) => `تحذير: خطر تسمم الدم مرتفع (${v}%)`,
+    alertCrying: 'الطفل بيعيط — تحقق من سبب البكاء',
+    alertConnecting: 'جاري الاتصال بالحاضنة…',
+    alertConnected: '✅ متصل بالحاضنة بنجاح!',
+    alertInvalidUrl: 'أدخل رابط WebSocket صحيح يبدأ بـ wss:// أو ws://',
+    alertError: (msg) => `خطأ: ${msg}`,
+    cryClassMap: { Hunger: 'جوع', Pain: 'ألم', Discomfort: 'إزعاج', Sleepy: 'نعاس', Calm: 'هادي' },
+    locale: 'ar-EG',
+  },
+  en: {
+    pageTitle: 'IncuVate — Baby Health Monitor',
+    brandTagline: 'Real-time baby health monitoring',
+    connStatus: 'Connection status',
+    heroTitle: 'Your baby is safe<br>in the smart incubator’s care',
+    heroDesc: 'Tracking every moment — heart rate, temperature, oxygen, and crying — and alerting you to any change instantly',
+    demoBadge: 'Demo Mode',
+    demoRest: ' — This is sample data. Connect to an MQTT broker to see real data',
+    sectionVitals: 'Vital Signs',
+    statusOk: 'Baby is fine',
+    labelHr: 'Heart Rate',
+    labelSpo2: 'Oxygen Level',
+    labelResp: 'Respiratory Rate',
+    labelTemp: 'Skin Temperature',
+    labelWeight: 'Weight',
+    labelAge: 'Age',
+    unitResp: 'breaths/min',
+    unitWeight: 'grams',
+    unitAge: 'days',
+    lastUpdateLabel: 'Last update:',
+    sectionEnv: 'Incubator Environment',
+    envTempLabel: 'Incubator Temperature',
+    envHumLabel: 'Humidity',
+    cryTitle: 'Cry Detection (AI)',
+    cryWaiting: 'Waiting for data…',
+    cryCrying: '🔴 Baby is crying!',
+    cryCalm: '🟢 Baby is calm',
+    cryReasonPrefix: 'Reason: ',
+    sectionExplainer: 'How does IncuVate work?',
+    diagramSensors: 'Sensor<br>Devices',
+    diagramAI: 'Artificial<br>Intelligence',
+    diagramYou: 'You<br>Here',
+    explainerTitle: 'An integrated system protecting your baby 24/7',
+    explainerSub: 'From the incubator to your phone in seconds — without interruption',
+    step1Title: 'Sensors monitor your baby',
+    step1Desc: 'Specialized sensors measure heart rate, oxygen level, temperature, respiratory rate, and weight — second by second',
+    step2Title: 'AI analyzes the data',
+    step2Desc: 'A Raspberry Pi 4 runs AI models that detect the baby\'s crying, classify the cause (hunger / pain / discomfort), and calculate risk levels',
+    step3Title: 'The incubator self-regulates',
+    step3Desc: 'A PID controller precisely adjusts temperature and humidity — just like a major hospital incubator — automatically, without intervention',
+    step4Title: 'Instant notification on your phone',
+    step4Desc: 'If there\'s any change — crying, a drop in oxygen, or a warning — you\'ll get an instant notification over the internet',
+    videoTitle: 'Project demo video',
+    videoDesc: 'See how IncuVate works on the inside — circuit design, code, and testing',
+    videoNote: '📌 A YouTube link can be added here later',
+    sectionRisk: 'Risk Analysis (AI)',
+    riskSepsis: 'Sepsis',
+    riskHypoxia: 'Hypoxia',
+    riskBrady: 'Bradycardia',
+    riskDesc: '🤖 The AI calculates the risk percentage for each issue based on vital data — and sends an instant alert if the level exceeds the safe threshold',
+    sectionAlerts: 'Recent Alerts',
+    alertsEmpty: 'No alerts right now ✅',
+    sectionConfig: 'Connection Setup',
+    cfgUrlLabel: 'MQTT Broker URL (WebSocket)',
+    cfgUserLabel: 'Username (optional)',
+    cfgPassLabel: 'Password (optional)',
+    cfgBtn: '🔗 Connect to Incubator',
+    cfgHint: 'Ask the medical staff or technical team for your connection details',
+    footerLine1: 'IncuVate — Graduation Project | <span>Pharos University — Alexandria</span>',
+    footerLine2: 'A smart baby incubator powered by AI and IoT',
+    statusAllGood: 'Baby is fine — everything is normal',
+    issueLowO2: 'Low oxygen',
+    issueIrregularHr: 'Irregular heart rate',
+    issueAbnormalTemp: 'Abnormal temperature',
+    alertLowO2: (v) => `Warning: low oxygen level (${v}%)`,
+    alertHighSepsis: (v) => `Warning: high sepsis risk (${v}%)`,
+    alertCrying: 'Baby is crying — check the cause',
+    alertConnecting: 'Connecting to the incubator…',
+    alertConnected: '✅ Successfully connected to the incubator!',
+    alertInvalidUrl: 'Enter a valid WebSocket URL starting with wss:// or ws://',
+    alertError: (msg) => `Error: ${msg}`,
+    cryClassMap: { Hunger: 'Hunger', Pain: 'Pain', Discomfort: 'Discomfort', Sleepy: 'Sleepy', Calm: 'Calm' },
+    locale: 'en-US',
+  },
+  fr: {
+    pageTitle: 'IncuVate — Suivi de la santé du bébé',
+    brandTagline: 'Suivi en temps réel de la santé de votre bébé',
+    connStatus: 'État de la connexion',
+    heroTitle: 'Votre bébé est en sécurité<br>dans le cocon de l\'incubateur intelligent',
+    heroDesc: 'Suit chaque instant — fréquence cardiaque, température, oxygène et pleurs — et vous alerte instantanément en cas de changement',
+    demoBadge: 'Mode démo',
+    demoRest: ' — Ce sont des données d\'exemple. Connectez-vous à un broker MQTT pour voir les données réelles',
+    sectionVitals: 'Signes vitaux',
+    statusOk: 'Le bébé va bien',
+    labelHr: 'Fréquence cardiaque',
+    labelSpo2: 'Niveau d\'oxygène',
+    labelResp: 'Fréquence respiratoire',
+    labelTemp: 'Température cutanée',
+    labelWeight: 'Poids',
+    labelAge: 'Âge',
+    unitResp: 'resp/min',
+    unitWeight: 'grammes',
+    unitAge: 'jours',
+    lastUpdateLabel: 'Dernière mise à jour :',
+    sectionEnv: 'Environnement de l\'incubateur',
+    envTempLabel: 'Température de l\'incubateur',
+    envHumLabel: 'Humidité',
+    cryTitle: 'Détection des pleurs (IA)',
+    cryWaiting: 'En attente de données…',
+    cryCrying: '🔴 Le bébé pleure !',
+    cryCalm: '🟢 Le bébé est calme',
+    cryReasonPrefix: 'Raison : ',
+    sectionExplainer: 'Comment fonctionne IncuVate ?',
+    diagramSensors: 'Dispositifs<br>de capteurs',
+    diagramAI: 'Intelligence<br>artificielle',
+    diagramYou: 'Vous<br>êtes ici',
+    explainerTitle: 'Un système intégré qui protège votre bébé 24h/24 et 7j/7',
+    explainerSub: 'De l\'incubateur à votre téléphone en quelques secondes — sans interruption',
+    step1Title: 'Les capteurs surveillent votre bébé',
+    step1Desc: 'Des capteurs spécialisés mesurent la fréquence cardiaque, le niveau d\'oxygène, la température, la fréquence respiratoire et le poids — seconde par seconde',
+    step2Title: 'L\'IA analyse les données',
+    step2Desc: 'Un Raspberry Pi 4 exécute des modèles d\'IA qui détectent les pleurs du bébé, en classent la cause (faim / douleur / inconfort) et calculent les niveaux de risque',
+    step3Title: 'L\'incubateur se régule automatiquement',
+    step3Desc: 'Un régulateur PID ajuste précisément la température et l\'humidité — comme un grand incubateur hospitalier — automatiquement, sans intervention',
+    step4Title: 'Notification instantanée sur votre téléphone',
+    step4Desc: 'En cas de changement — pleurs, baisse d\'oxygène ou alerte — vous recevez une notification instantanée via Internet',
+    videoTitle: 'Vidéo de démonstration du projet',
+    videoDesc: 'Découvrez le fonctionnement interne d\'IncuVate — conception des circuits, code et tests',
+    videoNote: '📌 Un lien YouTube pourra être ajouté ici plus tard',
+    sectionRisk: 'Analyse des risques (IA)',
+    riskSepsis: 'Sepsis',
+    riskHypoxia: 'Hypoxie',
+    riskBrady: 'Bradycardie',
+    riskDesc: '🤖 L\'IA calcule le pourcentage de risque pour chaque problème à partir des données vitales — et envoie une alerte instantanée si le seuil sécuritaire est dépassé',
+    sectionAlerts: 'Dernières alertes',
+    alertsEmpty: 'Aucune alerte pour le moment ✅',
+    sectionConfig: 'Configuration de la connexion',
+    cfgUrlLabel: 'URL du broker MQTT (WebSocket)',
+    cfgUserLabel: 'Nom d\'utilisateur (facultatif)',
+    cfgPassLabel: 'Mot de passe (facultatif)',
+    cfgBtn: '🔗 Se connecter à l\'incubateur',
+    cfgHint: 'Demandez vos informations de connexion au personnel médical ou à l\'équipe technique',
+    footerLine1: 'IncuVate — Projet de fin d\'études | <span>Université Pharos — Alexandrie</span>',
+    footerLine2: 'Un incubateur de bébé intelligent alimenté par l\'IA et l\'IoT',
+    statusAllGood: 'Le bébé va bien — tout est normal',
+    issueLowO2: 'Oxygène faible',
+    issueIrregularHr: 'Rythme cardiaque irrégulier',
+    issueAbnormalTemp: 'Température anormale',
+    alertLowO2: (v) => `Attention : niveau d'oxygène faible (${v}%)`,
+    alertHighSepsis: (v) => `Attention : risque de sepsis élevé (${v}%)`,
+    alertCrying: 'Le bébé pleure — vérifiez la cause',
+    alertConnecting: 'Connexion à l\'incubateur…',
+    alertConnected: '✅ Connecté avec succès à l\'incubateur !',
+    alertInvalidUrl: 'Entrez une URL WebSocket valide commençant par wss:// ou ws://',
+    alertError: (msg) => `Erreur : ${msg}`,
+    cryClassMap: { Hunger: 'Faim', Pain: 'Douleur', Discomfort: 'Inconfort', Sleepy: 'Somnolence', Calm: 'Calme' },
+    locale: 'fr-FR',
+  },
+  de: {
+    pageTitle: 'IncuVate — Gesundheitsüberwachung für Babys',
+    brandTagline: 'Echtzeit-Überwachung der Gesundheit Ihres Babys',
+    connStatus: 'Verbindungsstatus',
+    heroTitle: 'Ihr Baby ist sicher<br>in der Obhut des intelligenten Brutkastens',
+    heroDesc: 'Verfolgt jeden Moment — Herzfrequenz, Temperatur, Sauerstoff und Weinen — und benachrichtigt Sie sofort bei Veränderungen',
+    demoBadge: 'Demomodus',
+    demoRest: ' — Dies sind Beispieldaten. Verbinden Sie sich mit einem MQTT-Broker, um echte Daten zu sehen',
+    sectionVitals: 'Vitalwerte',
+    statusOk: 'Dem Baby geht es gut',
+    labelHr: 'Herzfrequenz',
+    labelSpo2: 'Sauerstoffsättigung',
+    labelResp: 'Atemfrequenz',
+    labelTemp: 'Hauttemperatur',
+    labelWeight: 'Gewicht',
+    labelAge: 'Alter',
+    unitResp: 'Atemzüge/Min',
+    unitWeight: 'Gramm',
+    unitAge: 'Tage',
+    lastUpdateLabel: 'Letzte Aktualisierung:',
+    sectionEnv: 'Umgebung des Brutkastens',
+    envTempLabel: 'Temperatur des Brutkastens',
+    envHumLabel: 'Luftfeuchtigkeit',
+    cryTitle: 'Weinerkennung (KI)',
+    cryWaiting: 'Warten auf Daten…',
+    cryCrying: '🔴 Das Baby weint!',
+    cryCalm: '🟢 Das Baby ist ruhig',
+    cryReasonPrefix: 'Grund: ',
+    sectionExplainer: 'Wie funktioniert IncuVate?',
+    diagramSensors: 'Sensor-<br>geräte',
+    diagramAI: 'Künstliche<br>Intelligenz',
+    diagramYou: 'Sie<br>hier',
+    explainerTitle: 'Ein integriertes System, das Ihr Baby 24/7 schützt',
+    explainerSub: 'Vom Brutkasten zu Ihrem Telefon in Sekunden — ohne Unterbrechung',
+    step1Title: 'Sensoren überwachen Ihr Baby',
+    step1Desc: 'Spezialisierte Sensoren messen Herzfrequenz, Sauerstoffsättigung, Temperatur, Atemfrequenz und Gewicht — Sekunde für Sekunde',
+    step2Title: 'KI analysiert die Daten',
+    step2Desc: 'Ein Raspberry Pi 4 betreibt KI-Modelle, die das Weinen des Babys erkennen, die Ursache klassifizieren (Hunger / Schmerz / Unbehagen) und Risikostufen berechnen',
+    step3Title: 'Der Brutkasten regelt sich selbst',
+    step3Desc: 'Ein PID-Regler passt Temperatur und Luftfeuchtigkeit präzise an — genau wie ein großer Krankenhaus-Brutkasten — automatisch, ohne Eingriff',
+    step4Title: 'Sofortige Benachrichtigung auf Ihrem Telefon',
+    step4Desc: 'Bei jeder Veränderung — Weinen, Sauerstoffabfall oder Warnung — erhalten Sie sofort eine Benachrichtigung über das Internet',
+    videoTitle: 'Demovideo des Projekts',
+    videoDesc: 'Sehen Sie, wie IncuVate von innen funktioniert — Schaltungsdesign, Code und Tests',
+    videoNote: '📌 Ein YouTube-Link kann hier später hinzugefügt werden',
+    sectionRisk: 'Risikoanalyse (KI)',
+    riskSepsis: 'Sepsis',
+    riskHypoxia: 'Hypoxie',
+    riskBrady: 'Bradykardie',
+    riskDesc: '🤖 Die KI berechnet den Risikoprozentsatz für jedes Problem anhand der Vitaldaten — und sendet sofort eine Warnung, wenn der sichere Grenzwert überschritten wird',
+    sectionAlerts: 'Letzte Warnungen',
+    alertsEmpty: 'Derzeit keine Warnungen ✅',
+    sectionConfig: 'Verbindungseinstellungen',
+    cfgUrlLabel: 'MQTT-Broker-URL (WebSocket)',
+    cfgUserLabel: 'Benutzername (optional)',
+    cfgPassLabel: 'Passwort (optional)',
+    cfgBtn: '🔗 Mit dem Brutkasten verbinden',
+    cfgHint: 'Fragen Sie das medizinische Personal oder das technische Team nach Ihren Verbindungsdaten',
+    footerLine1: 'IncuVate — Abschlussprojekt | <span>Pharos-Universität — Alexandria</span>',
+    footerLine2: 'Ein intelligenter Babybrutkasten mit KI und IoT',
+    statusAllGood: 'Dem Baby geht es gut — alles ist normal',
+    issueLowO2: 'Niedriger Sauerstoff',
+    issueIrregularHr: 'Unregelmäßige Herzfrequenz',
+    issueAbnormalTemp: 'Abnormale Temperatur',
+    alertLowO2: (v) => `Warnung: niedriger Sauerstoffgehalt (${v}%)`,
+    alertHighSepsis: (v) => `Warnung: hohes Sepsisrisiko (${v}%)`,
+    alertCrying: 'Das Baby weint — Ursache prüfen',
+    alertConnecting: 'Verbindung zum Brutkasten wird hergestellt…',
+    alertConnected: '✅ Erfolgreich mit dem Brutkasten verbunden!',
+    alertInvalidUrl: 'Geben Sie eine gültige WebSocket-URL ein, die mit wss:// oder ws:// beginnt',
+    alertError: (msg) => `Fehler: ${msg}`,
+    cryClassMap: { Hunger: 'Hunger', Pain: 'Schmerz', Discomfort: 'Unbehagen', Sleepy: 'Müdigkeit', Calm: 'Ruhig' },
+    locale: 'de-DE',
+  },
+  sv: {
+    pageTitle: 'IncuVate — Babyns hälsoövervakning',
+    brandTagline: 'Övervakning av ditt barns hälsa i realtid',
+    connStatus: 'Anslutningsstatus',
+    heroTitle: 'Din baby är trygg<br>i den smarta kuvösens vård',
+    heroDesc: 'Följer varje stund — hjärtfrekvens, temperatur, syre och gråt — och meddelar dig direkt vid förändringar',
+    demoBadge: 'Demoläge',
+    demoRest: ' — Detta är exempeldata. Anslut till en MQTT-broker för att se riktig data',
+    sectionVitals: 'Vitala tecken',
+    statusOk: 'Babyn mår bra',
+    labelHr: 'Hjärtfrekvens',
+    labelSpo2: 'Syrenivå',
+    labelResp: 'Andningsfrekvens',
+    labelTemp: 'Hudtemperatur',
+    labelWeight: 'Vikt',
+    labelAge: 'Ålder',
+    unitResp: 'andetag/min',
+    unitWeight: 'gram',
+    unitAge: 'dagar',
+    lastUpdateLabel: 'Senast uppdaterad:',
+    sectionEnv: 'Kuvösens miljö',
+    envTempLabel: 'Kuvösens temperatur',
+    envHumLabel: 'Luftfuktighet',
+    cryTitle: 'Grådetektering (AI)',
+    cryWaiting: 'Väntar på data…',
+    cryCrying: '🔴 Babyn gråter!',
+    cryCalm: '🟢 Babyn är lugn',
+    cryReasonPrefix: 'Orsak: ',
+    sectionExplainer: 'Hur fungerar IncuVate?',
+    diagramSensors: 'Sensor-<br>enheter',
+    diagramAI: 'Artificiell<br>intelligens',
+    diagramYou: 'Du<br>här',
+    explainerTitle: 'Ett integrerat system som skyddar din baby 24/7',
+    explainerSub: 'Från kuvösen till din telefon på sekunder — utan avbrott',
+    step1Title: 'Sensorer övervakar din baby',
+    step1Desc: 'Specialiserade sensorer mäter hjärtfrekvens, syrenivå, temperatur, andningsfrekvens och vikt — sekund för sekund',
+    step2Title: 'AI analyserar data',
+    step2Desc: 'En Raspberry Pi 4 kör AI-modeller som upptäcker babyns gråt, klassificerar orsaken (hunger / smärta / obehag) och beräknar risknivåer',
+    step3Title: 'Kuvösen reglerar sig själv',
+    step3Desc: 'En PID-regulator justerar temperatur och luftfuktighet exakt — precis som en stor sjukhuskuvös — automatiskt, utan ingripande',
+    step4Title: 'Direkt notis till din telefon',
+    step4Desc: 'Om något förändras — gråt, syrefall eller en varning — får du en omedelbar notis över internet',
+    videoTitle: 'Projektets demovideo',
+    videoDesc: 'Se hur IncuVate fungerar på insidan — kretsdesign, kod och testning',
+    videoNote: '📌 En YouTube-länk kan läggas till här senare',
+    sectionRisk: 'Riskanalys (AI)',
+    riskSepsis: 'Sepsis',
+    riskHypoxia: 'Hypoxi',
+    riskBrady: 'Bradykardi',
+    riskDesc: '🤖 AI:n beräknar riskprocenten för varje problem baserat på vitala data — och skickar en omedelbar varning om nivån överskrider den säkra gränsen',
+    sectionAlerts: 'Senaste varningarna',
+    alertsEmpty: 'Inga varningar just nu ✅',
+    sectionConfig: 'Anslutningsinställningar',
+    cfgUrlLabel: 'MQTT Broker-URL (WebSocket)',
+    cfgUserLabel: 'Användarnamn (valfritt)',
+    cfgPassLabel: 'Lösenord (valfritt)',
+    cfgBtn: '🔗 Anslut till kuvösen',
+    cfgHint: 'Fråga vårdpersonalen eller det tekniska teamet om dina anslutningsuppgifter',
+    footerLine1: 'IncuVate — Examensarbete | <span>Pharos University — Alexandria</span>',
+    footerLine2: 'En smart babykuvös driven av AI och IoT',
+    statusAllGood: 'Babyn mår bra — allt är normalt',
+    issueLowO2: 'Lågt syre',
+    issueIrregularHr: 'Oregelbunden hjärtfrekvens',
+    issueAbnormalTemp: 'Onormal temperatur',
+    alertLowO2: (v) => `Varning: låg syrenivå (${v}%)`,
+    alertHighSepsis: (v) => `Varning: hög sepsisrisk (${v}%)`,
+    alertCrying: 'Babyn gråter — kontrollera orsaken',
+    alertConnecting: 'Ansluter till kuvösen…',
+    alertConnected: '✅ Ansluten till kuvösen!',
+    alertInvalidUrl: 'Ange en giltig WebSocket-URL som börjar med wss:// eller ws://',
+    alertError: (msg) => `Fel: ${msg}`,
+    cryClassMap: { Hunger: 'Hunger', Pain: 'Smärta', Discomfort: 'Obehag', Sleepy: 'Sömnig', Calm: 'Lugn' },
+    locale: 'sv-SE',
+  },
+  zh: {
+    pageTitle: 'IncuVate — 婴儿健康监测',
+    brandTagline: '实时监测宝宝的健康状况',
+    connStatus: '连接状态',
+    heroTitle: '您的宝宝很安全<br>在智能保温箱的呵护下',
+    heroDesc: '实时追踪每一刻 — 心率、体温、血氧和哭声 — 并在任何变化时立即通知您',
+    demoBadge: '演示模式',
+    demoRest: ' — 这是示例数据。请连接 MQTT 代理以查看真实数据',
+    sectionVitals: '生命体征',
+    statusOk: '宝宝状况良好',
+    labelHr: '心率',
+    labelSpo2: '血氧水平',
+    labelResp: '呼吸频率',
+    labelTemp: '皮肤温度',
+    labelWeight: '体重',
+    labelAge: '天数',
+    unitResp: '次/分钟',
+    unitWeight: '克',
+    unitAge: '天',
+    lastUpdateLabel: '最后更新：',
+    sectionEnv: '保温箱环境',
+    envTempLabel: '保温箱温度',
+    envHumLabel: '湿度',
+    cryTitle: '哭声检测（AI）',
+    cryWaiting: '等待数据…',
+    cryCrying: '🔴 宝宝在哭！',
+    cryCalm: '🟢 宝宝很安静',
+    cryReasonPrefix: '原因：',
+    sectionExplainer: 'IncuVate 如何工作？',
+    diagramSensors: '传感<br>设备',
+    diagramAI: '人工<br>智能',
+    diagramYou: '您<br>在这里',
+    explainerTitle: '全天候保护您宝宝的综合系统',
+    explainerSub: '从保温箱到您的手机只需几秒钟 — 不间断',
+    step1Title: '传感器监测您的宝宝',
+    step1Desc: '专用传感器逐秒测量心率、血氧水平、体温、呼吸频率和体重',
+    step2Title: '人工智能分析数据',
+    step2Desc: 'Raspberry Pi 4 运行 AI 模型，检测宝宝的哭声，对原因进行分类（饥饿 / 疼痛 / 不适），并计算风险等级',
+    step3Title: '保温箱自动调节',
+    step3Desc: 'PID 控制器精确调节温度和湿度 — 就像大型医院保温箱一样 — 全自动，无需人工干预',
+    step4Title: '手机即时通知',
+    step4Desc: '如果出现任何变化 — 哭闹、血氧下降或警报 — 您将立即通过互联网收到通知',
+    videoTitle: '项目演示视频',
+    videoDesc: '了解 IncuVate 内部如何运作 — 电路设计、代码与测试',
+    videoNote: '📌 稍后可在此处添加 YouTube 链接',
+    sectionRisk: '风险分析（AI）',
+    riskSepsis: '败血症',
+    riskHypoxia: '缺氧',
+    riskBrady: '心动过缓',
+    riskDesc: '🤖 AI 根据生命体征数据计算每个问题的风险百分比 — 如果超过安全阈值，会立即发送警报',
+    sectionAlerts: '最新警报',
+    alertsEmpty: '目前没有警报 ✅',
+    sectionConfig: '连接设置',
+    cfgUrlLabel: 'MQTT 代理地址（WebSocket）',
+    cfgUserLabel: '用户名（可选）',
+    cfgPassLabel: '密码（可选）',
+    cfgBtn: '🔗 连接保温箱',
+    cfgHint: '请向医护人员或技术团队询问您的连接信息',
+    footerLine1: 'IncuVate — 毕业设计项目 | <span>法洛斯大学 — 亚历山大</span>',
+    footerLine2: '一款由人工智能和物联网驱动的智能婴儿保温箱',
+    statusAllGood: '宝宝状况良好 — 一切正常',
+    issueLowO2: '血氧偏低',
+    issueIrregularHr: '心率不规律',
+    issueAbnormalTemp: '体温异常',
+    alertLowO2: (v) => `警告：血氧水平偏低（${v}%）`,
+    alertHighSepsis: (v) => `警告：败血症风险较高（${v}%）`,
+    alertCrying: '宝宝在哭 — 请检查原因',
+    alertConnecting: '正在连接保温箱…',
+    alertConnected: '✅ 已成功连接保温箱！',
+    alertInvalidUrl: '请输入以 wss:// 或 ws:// 开头的有效 WebSocket 地址',
+    alertError: (msg) => `错误：${msg}`,
+    cryClassMap: { Hunger: '饥饿', Pain: '疼痛', Discomfort: '不适', Sleepy: '困倦', Calm: '安静' },
+    locale: 'zh-CN',
+  },
+};
+
+function t(key) { return I18N[state.lang][key]; }
+
+function applyTranslations() {
+  const dict = I18N[state.lang];
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (dict[key] !== undefined) el.textContent = dict[key];
+  });
+  document.querySelectorAll('[data-i18n-html]').forEach(el => {
+    const key = el.getAttribute('data-i18n-html');
+    if (dict[key] !== undefined) el.innerHTML = dict[key];
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const key = el.getAttribute('data-i18n-title');
+    if (dict[key] !== undefined) el.title = dict[key];
+  });
+  document.documentElement.lang = state.lang;
+  document.documentElement.dir = state.lang === 'ar' ? 'rtl' : 'ltr';
+  document.title = dict.pageTitle;
+  const select = document.getElementById('lang-select');
+  if (select) select.value = state.lang;
+}
+
+function setLanguage(lang) {
+  if (!I18N[lang]) return;
+  state.lang = lang;
+  try { localStorage.setItem('ng.lang', lang); } catch(e) {}
+  applyTranslations();
+  renderAll();
+}
+
+/* ─────────── RENDER ─────────── */
+function ts() { return new Date().toLocaleTimeString(I18N[state.lang].locale,{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function rand(a,b){return (Math.random()*(b-a))+a;}
+
+function setVal(id, val, suffix='') {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (val === null || val === undefined) {
+    el.textContent = '—';
+    el.className = el.className.replace(/\bdim\b/,'') + ' dim';
+    return;
+  }
+  el.textContent = (typeof val === 'number' ? val.toFixed(val>10?0:1) : val) + suffix;
+  el.className = el.className.replace(/\bdim\b/,'');
+}
+
+function getStatus() {
+  const v = state.vitals;
+  let issues = [];
+  if (v.spo2 !== null && v.spo2 < 94) issues.push(t('issueLowO2'));
+  if (v.heartRate !== null && (v.heartRate < 100 || v.heartRate > 180)) issues.push(t('issueIrregularHr'));
+  if (v.skinTemp !== null && (v.skinTemp < 36 || v.skinTemp > 37.5)) issues.push(t('issueAbnormalTemp'));
+  return issues;
+}
+
+function renderAll() {
+  const v = state.vitals;
+  setVal('val-hr', v.heartRate);
+  setVal('val-spo2', v.spo2);
+  setVal('val-resp', v.respRate);
+  setVal('val-temp', v.skinTemp);
+  setVal('val-weight', v.weight);
+  setVal('val-age', v.age);
+
+  const e = state.env;
+  document.getElementById('env-temp').textContent = e.incuTemp != null ? e.incuTemp.toFixed(1)+'°C' : '—°C';
+  document.getElementById('env-hum').textContent = e.humidity != null ? Math.round(e.humidity)+'%' : '—%';
+  document.getElementById('env-temp-bar').style.width = e.incuTemp != null ? clamp((e.incuTemp-34)/5*100,0,100)+'%' : '0%';
+  document.getElementById('env-hum-bar').style.width = e.humidity != null ? clamp(e.humidity,0,100)+'%' : '0%';
+
+  const r = state.risks;
+  setVal('risk-sepsis', r.sepsis);
+  setVal('risk-hypoxia', r.hypoxia);
+  setVal('risk-brady', r.brady);
+
+  const c = state.cry;
+  const cryCard = document.getElementById('cry-card');
+  const cryStatus = document.getElementById('cry-status');
+  const cryEmoji = document.getElementById('cry-emoji');
+  const cryClass = document.getElementById('cry-class');
+  if (c.status === 'Crying') {
+    cryCard.className = 'cry-card crying';
+    cryEmoji.textContent = '😢';
+    cryStatus.textContent = t('cryCrying');
+    cryStatus.style.color = '#ec4899';
+    cryClass.textContent = c.cryClass ? t('cryReasonPrefix') + translateClass(c.cryClass) : '';
+  } else if (c.status) {
+    cryCard.className = 'cry-card';
+    cryEmoji.textContent = '😴';
+    cryStatus.textContent = t('cryCalm');
+    cryStatus.style.color = '#22c55e';
+    cryClass.textContent = '';
+  }
+
+  const issues = getStatus();
+  const badge = document.getElementById('status-badge');
+  const statusText = document.getElementById('status-text');
+  if (issues.length > 0) {
+    badge.style.background = 'rgba(239,68,68,.1)';
+    badge.style.borderColor = 'rgba(239,68,68,.3)';
+    badge.querySelector('span').textContent = '⚠️';
+    statusText.textContent = issues.join(' — ');
+    statusText.style.color = '#ef4444';
+  } else if (v.heartRate !== null) {
+    badge.style.background = 'rgba(34,197,94,.1)';
+    badge.style.borderColor = 'rgba(34,197,94,.3)';
+    badge.querySelector('span').textContent = '✅';
+    statusText.textContent = t('statusAllGood');
+    statusText.style.color = '#22c55e';
+  }
+
+  document.getElementById('last-update').textContent = v.heartRate !== null ? ts() : '—';
+}
+
+function translateClass(cls) {
+  const map = I18N[state.lang].cryClassMap;
+  return map[cls] || cls;
+}
+
+function pushAlert(msg, type='info') {
+  const colors = {
+    info:     { bg:'rgba(30,144,255,.08)', border:'rgba(30,144,255,.2)', icon:'ℹ️' },
+    warning:  { bg:'rgba(245,158,11,.08)', border:'rgba(245,158,11,.25)', icon:'⚠️' },
+    critical: { bg:'rgba(239,68,68,.1)',   border:'rgba(239,68,68,.3)',   icon:'🚨' },
+  };
+  const c = colors[type] || colors.info;
+  const list = document.getElementById('alerts-list');
+  const empty = list.querySelector('.alerts-empty');
+  if (empty) empty.remove();
+  const item = document.createElement('div');
+  item.className = 'alert-item';
+  item.style.cssText = `background:${c.bg};border:1px solid ${c.border};`;
+  item.innerHTML = `<span style="font-size:16px;">${c.icon}</span>
+    <div class="alert-item-body">
+      <div class="alert-item-msg">${msg}</div>
+      <div class="alert-item-time">${ts()}</div>
+    </div>`;
+  list.insertBefore(item, list.firstChild);
+  while (list.children.length > 6) list.removeChild(list.lastChild);
+}
+
+/* ─────────── MQTT ─────────── */
+function handleMsg(topic, payload) {
+  const v = parseFloat(payload);
+  const s = payload.trim();
+  if (topic === TOPICS.heartRate)  { state.vitals.heartRate = isNaN(v)?null:v; }
+  else if (topic === TOPICS.spo2)  { state.vitals.spo2 = isNaN(v)?null:v; if(!isNaN(v)&&v<94) pushAlert(t('alertLowO2')(v.toFixed(1)),'critical'); }
+  else if (topic === TOPICS.respRate){ state.vitals.respRate = isNaN(v)?null:v; }
+  else if (topic === TOPICS.skinTemp){ state.vitals.skinTemp = isNaN(v)?null:v; }
+  else if (topic === TOPICS.weight){ state.vitals.weight = isNaN(v)?null:v; }
+  else if (topic === TOPICS.age)   { state.vitals.age = s; }
+  else if (topic === TOPICS.incuTemp){ state.env.incuTemp = isNaN(v)?null:v; }
+  else if (topic === TOPICS.humidity){ state.env.humidity = isNaN(v)?null:v; }
+  else if (topic === TOPICS.sepsisRisk){ state.risks.sepsis = isNaN(v)?null:v; if(!isNaN(v)&&v>25) pushAlert(t('alertHighSepsis')(v.toFixed(0)),'warning'); }
+  else if (topic === TOPICS.hypoxia){ state.risks.hypoxia = isNaN(v)?null:v; }
+  else if (topic === TOPICS.brady) { state.risks.brady = isNaN(v)?null:v; }
+  else if (topic === TOPICS.babyCry){ state.cry.status = s; if(s==='Crying') pushAlert(t('alertCrying'),'warning'); }
+  else if (topic === TOPICS.cryClass){ state.cry.cryClass = s; }
+  renderAll();
+}
+
+function connectBroker() {
+  stopDemo();
+  if (state.client) { try{state.client.end(true);}catch(e){} state.client=null; }
+
+  const url  = document.getElementById('cfg-url').value.trim();
+  const user = document.getElementById('cfg-user').value.trim();
+  const pass = document.getElementById('cfg-pass').value;
+
+  if (!url || !/^wss?:\/\//i.test(url)) {
+    pushAlert(t('alertInvalidUrl'),'critical'); return;
+  }
+
+  try { localStorage.setItem('ng.url',url); localStorage.setItem('ng.user',user); if(pass) localStorage.setItem('ng.pass',btoa(pass)); } catch(e){}
+
+  pushAlert(t('alertConnecting'),'info');
+
+  const opts = { clientId:'parent-'+Math.random().toString(16).slice(2,10), clean:true, reconnectPeriod:5000, connectTimeout:10000 };
+  if (user) opts.username = user;
+  if (pass) opts.password = pass;
+
+  const client = mqtt.connect(url, opts);
+  state.client = client;
+
+  client.on('connect', () => {
+    state.connected = true;
+    document.getElementById('conn-dot').className = 'conn-dot live';
+    document.getElementById('demo-bar').style.display = 'none';
+    pushAlert(t('alertConnected'),'info');
+    const allTopics = Object.values(TOPICS);
+    client.subscribe(allTopics, { qos:0 });
+    client.subscribe('#', { qos:0 });
+    state.vitals = {}; state.env = {}; state.risks = {}; state.cry = {};
+    renderAll();
+  });
+  client.on('message', (topic,msg) => handleMsg(topic, msg.toString()));
+  client.on('error', (e) => pushAlert(t('alertError')(e&&e.message?e.message:e),'critical'));
+  client.on('close', () => { state.connected=false; document.getElementById('conn-dot').className='conn-dot'; });
+}
+
+/* ─────────── DEMO MODE ─────────── */
+function startDemo() {
+  state.demoMode = true;
+  state.vitals = { heartRate:140, spo2:96, respRate:45, skinTemp:36.8, weight:1850, age:'5' };
+  state.env = { incuTemp:36.5, humidity:55 };
+  state.risks = { sepsis:12, hypoxia:8, brady:5 };
+  state.cry = { status:'No cry', cryClass:'' };
+  renderAll();
+
+  state.demoInterval = setInterval(() => {
+    const v=state.vitals, e=state.env, r=state.risks;
+    v.heartRate = clamp(v.heartRate+rand(-3,3),110,170);
+    v.spo2      = clamp(v.spo2+rand(-.5,.5),93,100);
+    v.respRate  = clamp(v.respRate+rand(-2,2),35,60);
+    v.skinTemp  = clamp(v.skinTemp+rand(-.05,.05),36.3,37.4);
+    v.weight    = clamp(v.weight+rand(-2,2),1700,2100);
+    e.incuTemp  = clamp(e.incuTemp+rand(-.05,.05),35.8,37.2);
+    e.humidity  = clamp(e.humidity+rand(-1,1),45,65);
+    r.sepsis    = clamp(r.sepsis+rand(-2,2),0,30);
+    r.hypoxia   = clamp(r.hypoxia+rand(-1,1),0,20);
+    r.brady     = clamp(r.brady+rand(-1,1),0,15);
+    if (Math.random()<0.05) {
+      const cls=['Hunger','Discomfort','Pain','Sleepy'];
+      state.cry.status='Crying'; state.cry.cryClass=cls[Math.floor(Math.random()*cls.length)];
+    } else { state.cry.status='Calm'; state.cry.cryClass=''; }
+    renderAll();
+  }, 2000);
+}
+
+function stopDemo() {
+  if (state.demoInterval) { clearInterval(state.demoInterval); state.demoInterval=null; }
+  state.demoMode = false;
+}
+
+/* ─────────── SCROLL REVEAL ─────────── */
+function revealSteps() {
+  const steps = document.querySelectorAll('.step');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        setTimeout(() => entry.target.classList.add('visible'), i*120);
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold:0.2 });
+  steps.forEach(s => observer.observe(s));
+}
+
+/* ─────────── INIT ─────────── */
+function init() {
+  try {
+    const savedLang = localStorage.getItem('ng.lang');
+    if (I18N[savedLang]) state.lang = savedLang;
+  } catch(e) {}
+  applyTranslations();
+  revealSteps();
+  let hasCreds = false;
+  try {
+    const u=localStorage.getItem('ng.url'), usr=localStorage.getItem('ng.user'), pw=localStorage.getItem('ng.pass');
+    if (u) { document.getElementById('cfg-url').value=u; }
+    if (usr) { document.getElementById('cfg-user').value=usr; }
+    if (pw) { document.getElementById('cfg-pass').value=atob(pw); hasCreds=true; }
+    if (hasCreds && u) { setTimeout(connectBroker, 800); return; }
+  } catch(e) {}
+  startDemo();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
